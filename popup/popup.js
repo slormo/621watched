@@ -1,249 +1,117 @@
-main();
+// popup.js
 
-async function main(){
-	const storage = await Promise.all([
-		load("subscriptions"),
-		load("customQueries"),
-		load("hideSubsButton")
-	]);
+document.addEventListener('DOMContentLoaded', initialize);
 
-	let storedTags = storage[0] || [];
-	let storedQueries = storage[1] || [];
-
-	if (storedTags.length + storedQueries.length > 0){
-		refresh(storedTags, storedQueries);
-		let lastSeen = await load("lastSeen");
-
-		if (lastSeen){
-			checkForNewImages(lastSeen, storedTags, storedQueries);
-		} else {
-			setCheckingStatus("Last seen post is unknown, please view watched tags manually");
-		}
-	}
-
-	document.getElementById("import_button").addEventListener("click", importTagsFromBackup);
-	document.getElementById("backupshow_button").addEventListener("click", showBackupOptions);
-	document.getElementById("copy_button").addEventListener("click", e => copyTags(storedTags));
-	document.getElementById("customQueryAdderButton").addEventListener("click", addCustomQuery);
-	document.getElementById("hideSubuscriptionButton").addEventListener("change", toggleSubsButton);
-	document.getElementById("hideSubuscriptionButton").checked = Boolean(storage[2]);
-	console.log(storage[2]);
-	document.getElementById("permalink").href = WATCHED_URL;
-	loadTagsToBackupText(storedTags);
+function initialize() {
+    loadWatchedTags();
 }
 
-async function refresh(storedTags, storedQueries, skipQueries = false){
-	//Update list of tags
-	let ul = document.getElementById("watchedTags");
-	while (ul.lastChild) {
-		ul.removeChild(ul.lastChild);
-	}
-	for (let tag of storedTags){
-		ul.appendChild(generateTagItem(tag));
-	}
-	if (!skipQueries)
-		for (let query of storedQueries){
-			createCustomQueryItem(query);
-		}
-
-	let subscriptionsLength = storedTags.length + storedQueries.length;
-	//Generate link for Watched button and reset watchTower
-	let watchedButton = document.getElementById("viewWatched");
-	let qurl = generateURL(1, generateQueries(storedTags)[0]);
-	await save({
-		"watchTower": {
-			"url": qurl, 
-			"page": 1
-		}
-	});
-	watchedButton.href = qurl;
-	watchedButton.style.display = subscriptionsLength == 0 ? "none" : "block";
-	watchedButton.textContent = "View watched";
-
-	document.getElementById("nuffin").style.display = subscriptionsLength == 0 ? "block" : "none";
+function loadWatchedTags() {
+    chrome.storage.sync.get(['watchedTags'], function (result) {
+        let watchedTags = result.watchedTags || [];
+        createNavTabs(watchedTags);
+    });
 }
 
-function generateTagItem(tag){
-	let li = document.createElement("li");
-	li.className = "tagItem";
+function createNavTabs(watchedTags) {
+    const BATCH_SIZE = 50;
+    let tagBatches = [];
 
-	let a = document.createElement("a");
-	a.href = "https://e621.net/posts?tags=" + sanitize(tag);
-	a.target = "_blank";
-	a.textContent = tag;
-	li.appendChild(a);
+    for (let i = 0; i < watchedTags.length; i += BATCH_SIZE) {
+        tagBatches.push(watchedTags.slice(i, i + BATCH_SIZE));
+    }
 
-	return li;
+    const navbar = document.getElementById('navbar');
+    navbar.innerHTML = ''; // Clear existing tabs
+
+    tagBatches.forEach((batch, index) => {
+        let tabName = `Watched${String.fromCharCode(65 + index)}`; // WatchedA, WatchedB, etc.
+        let tabButton = document.createElement('button');
+        tabButton.textContent = tabName;
+        tabButton.dataset.batchIndex = index;
+        tabButton.addEventListener('click', function () {
+            // Remove active class from all buttons
+            let buttons = navbar.getElementsByTagName('button');
+            for (let btn of buttons) {
+                btn.style.backgroundColor = '#333';
+                btn.style.color = '#f2f2f2';
+            }
+            // Add active style to the clicked button
+            tabButton.style.backgroundColor = '#ddd';
+            tabButton.style.color = 'black';
+
+            loadContent(batch);
+        });
+        navbar.appendChild(tabButton);
+    });
+
+    // Simulate a click on the first tab to load its content
+    if (navbar.firstChild) {
+        navbar.firstChild.click();
+    } else {
+        document.getElementById('content').innerHTML = '<p>No watched tags found.</p>';
+    }
 }
 
-function sanitize(tag){
-	return encodeURIComponent(tag.split(" ").join("_"))
+function loadContent(batch) {
+    // Construct the search URL for the batch of tags
+    let searchURL = getSearchURL(batch);
+
+    // Fetch and display the posts
+    fetchPosts(searchURL);
 }
 
-function setCheckingStatus(status){
-	document.getElementById("newImages").textContent = status;
+function getSearchURL(tags) {
+    let tagQuery = tags.join(' ');
+    return `https://e621.net/posts.json?tags=${encodeURIComponent(tagQuery)}&limit=20`;
 }
 
-async function checkForNewImages(lastSeen, storedTags, storedQueries){
-	if ((storedTags.length + storedQueries.length) == 0)
-		return;
-	
-	setCheckingStatus("Checking for new images...");
+function fetchPosts(url) {
+    let contentDiv = document.getElementById('content');
+    contentDiv.innerHTML = '<p>Loading posts...</p>';
 
-	let queryQueue = generateQueries(storedTags);
-	let urls = queryQueue.map(e => generateURL(1, e));
-	
-	if (storedQueries && storedQueries.length > 0){
-		let additionalURLs = storedQueries.map(query => {
-			return generateURL(1, encodeSearchQuery(query));
-		});
-		urls = urls.concat(additionalURLs);
-	}
-
-	console.log(urls);
-	let pages = await loadPages(urls, counter => {
-		setCheckingStatus("Checking for new images... (" + counter + "/" + urls.length + ")");
-	});
-
-	let newPostCounter = 0;
-	let failedToLoad = false;
-	let overflow = 0;
-	if (pages.length == 0) {
-		if (ERROR_LOGGING)
-			console.log("Error occured while loading search queries");
-		failedToLoad = true;
-	} else {
-		for (let page of pages){
-			let newPosts = countUnseenPosts(page, lastSeen);
-			if (newPosts.overflow) {
-				overflow = newPosts.batch;
-				break;
-			} else {
-				newPostCounter += newPosts.count;
-			}
-		}
-	}
-
-	let echo;
-	if (failedToLoad)
-		echo = "Failed to load, please check manually";
-	else if (overflow > 0)
-		echo = overflow + "+ new images";
-	else if (newPostCounter == 0)
-		echo = "No new images";
-	else if (newPostCounter == 1)
-		echo = newPostCounter + " new image";
-	else
-		echo = newPostCounter + " new images";
-
-	setCheckingStatus(echo);
+    // Fetch posts from e621 API
+    fetch(url, {
+        method: 'GET',
+        headers: {
+            'Accept': 'application/json',
+            // Add your User-Agent string as per e621 API policy
+            'User-Agent': 'YourUsername/ExtensionName/Version (by YourUsername on e621)'
+        }
+    })
+        .then(response => response.json())
+        .then(data => {
+            displayPosts(data.posts);
+        })
+        .catch(error => {
+            console.error('Error fetching posts:', error);
+            contentDiv.innerHTML = '<p>Error loading posts.</p>';
+        });
 }
 
-function countUnseenPosts(slavePage, lastSeen){
-	const previews = getPreviews(slavePage);
-	const newPreviews = previews.filter(preview => getPostId(preview) > lastSeen);
+function displayPosts(posts) {
+    let contentDiv = document.getElementById('content');
+    contentDiv.innerHTML = ''; // Clear existing content
 
-	return {
-		count: newPreviews.length,
-		batch: previews.length,
-		overflow: previews.length == newPreviews.length
-	};
-}
+    if (posts.length === 0) {
+        contentDiv.innerHTML = '<p>No posts found for these tags.</p>';
+        return;
+    }
 
-/////////////////////////////////////////////////////////////////////////////////////
-//Backup Options
+    posts.forEach(post => {
+        let postDiv = document.createElement('div');
+        postDiv.style.marginBottom = '10px';
 
-function showBackupOptions(){
-	document.getElementById("backupshow_button").style.display = "none";
-	document.getElementById("backup").style.display = "block";
-}
+        let thumbnail = document.createElement('img');
+        thumbnail.src = post.preview.url;
+        thumbnail.alt = `Post #${post.id}`;
+        thumbnail.style.cursor = 'pointer';
+        thumbnail.addEventListener('click', () => {
+            // Open the post in a new tab
+            chrome.tabs.create({ url: `https://e621.net/posts/${post.id}` });
+        });
 
-async function importTagsFromBackup(){
-	storedTags = document.getElementById("backupText").value.trim().split("\n");
-	await save({"subscriptions": storedTags});
-	document.getElementById("import_button").textContent = "Saved succesfully. Please reopen the window";
-}
-
-function copyTags(storedTags){
-	loadTagsToBackupText(storedTags);
-	let backupText = document.getElementById("backupText");
-	backupText.focus();
-	backupText.select();
-	document.execCommand("copy");
-}
-
-function loadTagsToBackupText(storedTags){
-	document.getElementById("backupText").value = storedTags.join("\n");
-}
-
-function toggleSubsButton(){
-	let checkbox = document.getElementById("hideSubuscriptionButton");
-	checkbox.checked;
-	
-	save({
-		"hideSubsButton": checkbox.checked
-	});
-}
-
-/////////////////////////////////////////////////////////////////////////////////////
-//Custom queries
-function createCustomQueryItem(value){
-	let container = document.createElement("div");
-	container.style.display = "block";
-	container.style.marginBottom = "4px";
-
-	let newItem = document.createElement("div");
-	newItem.className = "customQueryItem";
-	newItem.textContent = value;
-
-	let closeButton = document.createElement("div");
-	closeButton.className = "sidebutton close";
-	closeButton.textContent = "X";
-	closeButton.addEventListener("click", async () => {
-		let storedQueries = await load("customQueries");
-		if (storedQueries){
-			let i = storedQueries.indexOf(value);
-			if (i >= 0){
-				storedQueries.splice(i, 1);
-				await save({
-					customQueries: storedQueries
-				});
-				console.log(storedQueries);
-				container.remove();
-			}
-		}
-	});
-
-
-	container.appendChild(newItem);
-	container.appendChild(closeButton);
-
-	document.getElementById("customQueryList").appendChild(container);
-}
-
-async function addCustomQuery(){
-	let input = document.getElementById("customQueriesInput");
-	let v = input.value.trim();
-	if (v.length == 0) return;
-
-	let storedQueries = await load("customQueries");
-
-	if (!storedQueries || !Array.isArray(storedQueries)){
-		storedQueries = [];
-	}
-	storedQueries.push(v);
-	await save({
-		customQueries: storedQueries
-	})
-
-	let storedTags = [];
-	let tagsStorage = await load("subscriptions");
-	if (tagsStorage){
-		storedTags = tagsStorage;
-	}
-	refresh(storedTags, storedQueries, true);
-
-	createCustomQueryItem(v);
-
-	input.value = "";
+        postDiv.appendChild(thumbnail);
+        contentDiv.appendChild(postDiv);
+    });
 }
