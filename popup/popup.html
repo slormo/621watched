@@ -1,58 +1,50 @@
 <!DOCTYPE html>
-
 <html>
-	<head>
-		<link rel="icon" type="img/png" href="/favicon.png">
-		<meta name="viewport" content="width=device-width initial-scale=1.0">
-		<meta charset="utf-8">
-		<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:400&amp;subset=cyrillic">
-		<link rel="stylesheet" href="styles.css">
-	</head>
-
-	<body>
-		<div id="Header">
-			E621 Subscriptions
-		</div>
-		<div id="Belly">
-			<div id="newImages" style="text-align: center; width: 100%;"></div>
-			<a id="viewWatched" style="text-align: center; width: 100%;"></a></br>
-			Check out navigation bar at the top of the page to view <b>Watched</b> tags</br></br>
-			Here is the list of tags you watch:</br>
-			<div id="nuffin" style="text-align: center; width: 100%; margin: 10px; color: #6cf;">
-				You aren't subscribed to any tags yet!
-			</div>
-			<ul id="watchedTags">
-			</ul>
-			<div id="customQueryList">
-			</div>
-			<div id="customQueries">
-				<input id="customQueriesInput" placeholder="Enter custom complex search query to watch"><span class="sidebutton" id="customQueryAdderButton"> + </span>
-			</div>
-			<div>
-				<input type="checkbox" id="hideSubuscriptionButton">
-				<label for="hideSubuscriptionButton">Hide subscription button (OwO/XwX)</label>
-			</div>
-			<div>
-				<a id="permalink">Permalink to watched page</a>
-			</div>
-
-			<hr>
-			<a id="backupshow_button" href="#">Backup options</a>
-			<div id="backup" style="text-align: center; display:none;">
-				Place previously exported text here and </br>click "Import" to load the list of tags</br>
-				Warning: Previous tags will be overwritten!
-				<textarea id="backupText" style="resize: none; width: 80%;"></textarea></br>
-				<ul style="margin: auto; columns: 2; -webkit-columns: 2; -moz-columns: 2; padding: 0; list-style-type: none;">
-					<li><a id="import_button" href="#">Import</a></li>
-					<li><a id="copy_button" href="#">Copy</a></li>
-				</ul>
-			</div>
-
-			<div style="text-align: right; width: 100%; margin: auto; font-size: 12px; vertical-align: middle;">
-				Developed by <a href="https://e621.net/forum/show/269304" style="color: #ddd;" target="_blank">Miles Seventh =C</a>
-			</div>
-		</div>
-		<script type="text/javascript" src="./../shared.js"></script>
-		<script type="text/javascript" src="popup.js"></script>
-	</body>
+<head>
+    <title>621watched</title>
+    <style>
+        /* Styles for the navbar and content */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            width: 400px;
+            height: 600px;
+        }
+        #navbar {
+            overflow: hidden;
+            background-color: #333;
+        }
+        #navbar button {
+            float: left;
+            display: block;
+            color: #f2f2f2;
+            background-color: #333;
+            text-align: center;
+            padding: 10px 16px;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+        }
+        #navbar button:hover {
+            background-color: #ddd;
+            color: black;
+        }
+        #content {
+            padding: 10px;
+            overflow-y: auto;
+            height: 540px; /* Adjust based on the popup height */
+        }
+    </style>
+</head>
+<body>
+    <div id="navbar">
+        <!-- Navigation tabs will be inserted here by JavaScript -->
+    </div>
+    <div id="content">
+        <!-- Content will be loaded here based on the selected tab -->
+        <p>Loading...</p>
+    </div>
+    <script src="popup.js"></script>
+</body>
 </html>
